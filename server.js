@@ -1,35 +1,40 @@
 const express = require("express");
 const cors = require("cors");
-const fetch = require("node-fetch");
-const { HttpsProxyAgent } = require("https-proxy-agent");
+const puppeteer = require("puppeteer");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const EDPUZZLE_API = "https://edpuzzle.com/api/v3";
-
-// Residential proxy config
-const PROXY = "http://dfluaumh:on8j25ysxoxi@31.59.20.176:6754";
-const agent = new HttpsProxyAgent(PROXY);
-
 async function edpuzzleRequest(path, token, method = "GET", body = null) {
-  const cleanToken = token.replace(/^Bearer\s+/i, "").trim();
-  const options = {
-    method,
-    agent,
-    headers: {
-      "Authorization": cleanToken,
-      "Content-Type": "application/json",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Referer": "https://edpuzzle.com/",
-      "Origin": "https://edpuzzle.com"
-    }
-  };
-  if (body) options.body = JSON.stringify(body);
-  const res = await fetch(`${EDPUZZLE_API}${path}`, options);
-  const text = await res.text();
-  try { return JSON.parse(text); } catch { return { error: text }; }
+  const browser = await puppeteer.launch({
+    headless: "new",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"]
+  });
+  const page = await browser.newPage();
+
+  // Set the token cookie so Edpuzzle thinks we're logged in
+  await page.setCookie({
+    name: "token",
+    value: token,
+    domain: "edpuzzle.com"
+  });
+
+  const result = await page.evaluate(async (path, token, method, body) => {
+    const options = {
+      method,
+      headers: {
+        "Authorization": token,
+        "Content-Type": "application/json"
+      }
+    };
+    if (body) options.body = JSON.stringify(body);
+    const res = await fetch(`https://edpuzzle.com/api/v3${path}`, options);
+    return res.json();
+  }, path, token, method, body);
+
+  await browser.close();
+  return result;
 }
 
 // GET /me
@@ -41,6 +46,7 @@ app.get("/me", async (req, res) => {
     console.log("/me response:", JSON.stringify(data).slice(0, 200));
     res.json(data);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Failed to fetch user info" });
   }
 });
@@ -99,5 +105,5 @@ app.post("/submit", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`PRIX backend running on port ${PORT}`));
