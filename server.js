@@ -13,18 +13,18 @@ async function edpuzzleRequest(path, token, method = "GET", body = null) {
   });
   const page = await browser.newPage();
 
-  // Set token cookie
+  // Set token cookie — leading dot is required
   await page.setCookie({
     name: "token",
     value: token,
-    domain: "edpuzzle.com",
+    domain: ".edpuzzle.com",
     path: "/",
     httpOnly: false,
     secure: true
   });
 
-  // Navigate to edpuzzle first so fetch works in the right context
-  await page.goto("https://edpuzzle.com", { waitUntil: "domcontentloaded", timeout: 30000 });
+  // Wait for full page settle so session is initialized
+  await page.goto("https://edpuzzle.com", { waitUntil: "networkidle2", timeout: 30000 });
 
   const result = await page.evaluate(async (path, token, method, body) => {
     const options = {
