@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+puppeteer.use(StealthPlugin());
 
 const app = express();
 app.use(cors());
@@ -13,7 +15,8 @@ async function edpuzzleRequest(path, token, method = "GET", body = null) {
   });
   const page = await browser.newPage();
 
-  // Set token cookie — leading dot is required
+  await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
   await page.setCookie({
     name: "token",
     value: token,
@@ -23,7 +26,6 @@ async function edpuzzleRequest(path, token, method = "GET", body = null) {
     secure: true
   });
 
-  // Wait for full page settle so session is initialized
   await page.goto("https://edpuzzle.com", { waitUntil: "networkidle2", timeout: 30000 });
 
   const result = await page.evaluate(async (path, token, method, body) => {
@@ -36,7 +38,12 @@ async function edpuzzleRequest(path, token, method = "GET", body = null) {
     };
     if (body) options.body = JSON.stringify(body);
     const res = await fetch(`https://edpuzzle.com/api/v3${path}`, options);
-    return res.json();
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      return { error: "non-json response", status: res.status, body: text.slice(0, 500) };
+    }
   }, path, token, method, body);
 
   await browser.close();
@@ -50,7 +57,7 @@ app.get("/me", async (req, res) => {
   try {
     const data = await edpuzzleRequest("/users/me", token);
     console.log("/me response:", JSON.stringify(data).slice(0, 200));
-    if (!data || data.error || !data._id) return res.status(401).json({ error: "Invalid token" });
+    if (!data || data.error || !data._id) return res.status(401).json({ error: "Invalid token", detail: data });
     res.json(data);
   } catch (err) {
     console.error(err);
