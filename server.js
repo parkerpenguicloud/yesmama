@@ -8,6 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ─── Puppeteer request helper ─────────────────────────────────────────────────
 async function edpuzzleRequest(path, token, method = "GET", body = null) {
   const browser = await puppeteer.launch({
     headless: "new",
@@ -50,7 +51,8 @@ async function edpuzzleRequest(path, token, method = "GET", body = null) {
   return result;
 }
 
-// GET /me
+// ─── GET /me ──────────────────────────────────────────────────────────────────
+// Returns user profile including _id (userId)
 app.get("/me", async (req, res) => {
   const token = req.headers.authorization;
   if (!token) return res.status(401).json({ error: "No token provided" });
@@ -61,39 +63,78 @@ app.get("/me", async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to fetch user info" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// GET /assignments
-app.get("/assignments", async (req, res) => {
+// ─── GET /classrooms ──────────────────────────────────────────────────────────
+// Returns all active classrooms for the student
+app.get("/classrooms", async (req, res) => {
   const token = req.headers.authorization;
   if (!token) return res.status(401).json({ error: "No token provided" });
   try {
-    const data = await edpuzzleRequest("/learning/submissions", token);
+    const data = await edpuzzleRequest("/classrooms/active", token);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch assignments" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// GET /assignment/:assignmentId/:attachmentId/content
-app.get("/assignment/:assignmentId/:attachmentId/content", async (req, res) => {
+// ─── GET /assignments/:classroomId ───────────────────────────────────────────
+// Returns all in-progress/not-started assignments for a classroom
+// Requires userId query param (from /me response)
+app.get("/assignments/:classroomId", async (req, res) => {
   const token = req.headers.authorization;
   if (!token) return res.status(401).json({ error: "No token provided" });
+  const { classroomId } = req.params;
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: "Missing userId query param" });
   try {
-    const { assignmentId, attachmentId } = req.params;
+    const path = `/learning/assignment_learners/users/${userId}/classrooms/${classroomId}?status[]=not-started&status[]=in-progress&isUpcoming=false&cursor=0`;
+    const data = await edpuzzleRequest(path, token);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /assignment/:assignmentId ───────────────────────────────────────────
+// Returns full assignment detail including attachments and submission IDs
+// Requires userId query param
+app.get("/assignment/:assignmentId", async (req, res) => {
+  const token = req.headers.authorization;
+  if (!token) return res.status(401).json({ error: "No token provided" });
+  const { assignmentId } = req.params;
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: "Missing userId query param" });
+  try {
+    const data = await edpuzzleRequest(`/learning/assignments/${assignmentId}/users/${userId}`, token);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /content/:assignmentId/:attachmentId ────────────────────────────────
+// Returns questions for a specific attachment
+app.get("/content/:assignmentId/:attachmentId", async (req, res) => {
+  const token = req.headers.authorization;
+  if (!token) return res.status(401).json({ error: "No token provided" });
+  const { assignmentId, attachmentId } = req.params;
+  try {
     const data = await edpuzzleRequest(
       `/learning/assignments/${assignmentId}/attachments/${attachmentId}/content`,
       token
     );
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch assignment content" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// POST /submit
+// ─── POST /submit ─────────────────────────────────────────────────────────────
+// Submit answers for a submission
+// Body: { submissionId, questionId, questionType, choiceIds, openAnswer }
 app.post("/submit", async (req, res) => {
   const token = req.headers.authorization;
   if (!token) return res.status(401).json({ error: "No token provided" });
@@ -115,7 +156,7 @@ app.post("/submit", async (req, res) => {
     );
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: "Failed to submit answer" });
+    res.status(500).json({ error: err.message });
   }
 });
 
