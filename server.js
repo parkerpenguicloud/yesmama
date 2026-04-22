@@ -9,16 +9,22 @@ app.use(express.json());
 async function edpuzzleRequest(path, token, method = "GET", body = null) {
   const browser = await puppeteer.launch({
     headless: "new",
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-web-security"]
   });
   const page = await browser.newPage();
 
-  // Set the token cookie so Edpuzzle thinks we're logged in
+  // Set token cookie
   await page.setCookie({
     name: "token",
     value: token,
-    domain: "edpuzzle.com"
+    domain: "edpuzzle.com",
+    path: "/",
+    httpOnly: false,
+    secure: true
   });
+
+  // Navigate to edpuzzle first so fetch works in the right context
+  await page.goto("https://edpuzzle.com", { waitUntil: "domcontentloaded", timeout: 30000 });
 
   const result = await page.evaluate(async (path, token, method, body) => {
     const options = {
@@ -44,6 +50,7 @@ app.get("/me", async (req, res) => {
   try {
     const data = await edpuzzleRequest("/users/me", token);
     console.log("/me response:", JSON.stringify(data).slice(0, 200));
+    if (!data || data.error || !data._id) return res.status(401).json({ error: "Invalid token" });
     res.json(data);
   } catch (err) {
     console.error(err);
