@@ -8,7 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ─── Edpuzzle request helper — fresh browser per request ─────────────────────
+// ─── Edpuzzle request helper ──────────────────────────────────────────────────
 async function edpuzzleRequest(path, token, method = "GET", body = null) {
   const browser = await puppeteer.launch({
     headless: "new",
@@ -41,6 +41,13 @@ async function edpuzzleRequest(path, token, method = "GET", body = null) {
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
+
+// Get server's outbound IP
+app.get("/myip", async (req, res) => {
+  const result = await fetch("https://api.ipify.org?format=json");
+  const data = await result.json();
+  res.json(data);
+});
 
 app.get("/me", async (req, res) => {
   const token = req.headers.authorization;
