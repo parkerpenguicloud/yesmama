@@ -8,23 +8,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ─── Browser singleton ────────────────────────────────────────────────────────
-let browser = null;
-
-async function getBrowser() {
-  if (browser && browser.isConnected()) return browser;
-  browser = await puppeteer.launch({
+// ─── Edpuzzle request helper — fresh browser per request ─────────────────────
+async function edpuzzleRequest(path, token, method = "GET", body = null) {
+  const browser = await puppeteer.launch({
     headless: "new",
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-web-security"]
   });
-  browser.on("disconnected", () => { browser = null; });
-  return browser;
-}
-
-// ─── Edpuzzle request helper ──────────────────────────────────────────────────
-async function edpuzzleRequest(path, token, method = "GET", body = null) {
-  const b = await getBrowser();
-  const page = await b.newPage();
+  const page = await browser.newPage();
   try {
     await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
     await page.setCookie({
@@ -46,6 +36,7 @@ async function edpuzzleRequest(path, token, method = "GET", body = null) {
     return result;
   } finally {
     await page.close();
+    await browser.close();
   }
 }
 
@@ -131,9 +122,7 @@ app.post("/submit", async (req, res) => {
   }
 });
 
-// ─── Start + warm up browser ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`PRIX backend running on port ${PORT}`);
-  getBrowser().then(() => console.log("Browser ready ✓")).catch(console.error);
 });
